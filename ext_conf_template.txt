@@ -1,0 +1,2 @@
+# cat=Settings; type=boolean; label=Use caching for querying related mask records. Increases memory consumption but reduces the amount of queries performed.
+cacheRecords = 0

@@ -2,11 +2,11 @@
 
 namespace LFM\MaskAutoKesearch\Indexer;
 
-use LFM\Lfmcore\Utility\DebuggerUtility;
 use LFM\MaskAutoKesearch\Xclass\Indexer\Types\Page;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaFieldDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
+use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -18,8 +18,12 @@ class AdditionalContentFields
 
     protected static array $tableCache = [];
 
+    protected $extConf;
+
     public function __construct()
     {
+        $this->extConf = GeneralUtility::makeInstance(ExtensionConfiguration::class)
+            ->get('mask_auto_kesearch');
         $loaderRegistry = GeneralUtility::getContainer()->get(LoaderRegistry::class);
         $this->collection = $loaderRegistry->getActivateLoader()->load();
     }
@@ -75,7 +79,11 @@ class AdditionalContentFields
         if ($field->type->isParentField()) {
             $childTable = $field->fullKey;
             $nestedTca = $this->collection->loadInlineFields($field->fullKey, $field->fullKey);
-            $rows = $this->getTableData($childTable, $tableName, $row['uid']);
+            if ((int)$this->extConf['cacheRecords']) {
+                $rows = $this->getTableDataFromCache($childTable, $tableName, $row['uid']);
+            } else {
+                $rows = $this->getTableDataDirectly($childTable, $tableName, $row['uid']);
+            }
             $this->pageIndexer->addRowCount(count($rows));
 
             // @todo: Improve this, as it potentially causes A LOT of database queries.
@@ -87,7 +95,38 @@ class AdditionalContentFields
         }
     }
 
-    protected function getTableData($tableName, $parenttable, $parentid): array
+    /**
+     * Makes a query for each relationship
+     *
+     * @param $tableName
+     * @param $parenttable
+     * @param $parentid
+     * @return array
+     */
+    protected function getTableDataDirectly($tableName, $parenttable, $parentid): array
+    {
+        $this->pageIndexer->addQueryCount(1);
+        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
+            ->getQueryBuilderForTable($tableName);
+        return $queryBuilder->select('*')
+            ->from($tableName)
+            ->where(
+                $queryBuilder->expr()->eq('parenttable', $queryBuilder->createNamedParameter($parenttable)),
+                $queryBuilder->expr()->eq('parentid', $queryBuilder->createNamedParameter($parentid))
+            )
+            ->execute()
+            ->fetchAllAssociative();
+    }
+
+    /**
+     * Reduces the amount of queries, but requires more memory to cache all records.
+     *
+     * @param $tableName
+     * @param $parenttable
+     * @param $parentid
+     * @return array
+     */
+    protected function getTableDataFromCache($tableName, $parenttable, $parentid): array
     {
         $cacheKey = $parenttable . '-' . $parentid;
         if (!isset(self::$tableCache[$tableName])) {
