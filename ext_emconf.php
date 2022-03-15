@@ -1,7 +1,7 @@
 <?php
 $EM_CONF[$_EXTKEY] = [
     'title' => 'Mask ke_search auto integration',
-    'description' => 'Automatically sets up an indexer for ke_search to index your custom Mask element fields.',
+    'description' => 'Automatically adjusts the page indexer of ke_search to index your custom Mask element fields and related records.',
     'category' => 'plugin',
     'author' => 'Lichtflut.Medien Entwicklung',
     'author_company' => 'Lichtflut.Medien GmbH & Co. KG',
