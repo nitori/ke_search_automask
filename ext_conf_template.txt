@@ -1,2 +1,2 @@
-# cat=Settings; type=boolean; label=Use caching for querying related mask records. Increases memory consumption but reduces the amount of queries performed.
+# cat=Settings; type=boolean; label=Use caching for querying related mask records. Increases memory consumption but reduces the amount of queries performed. If you use inkremental indexing, it might be best to leave this unchecked.
 cacheRecords = 0
