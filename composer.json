@@ -1,5 +1,5 @@
 {
-  "name": "lfm/mask_auto_kesearch",
+  "name": "lfm/ke_search_automask",
   "description": "Mask ke_search auto integration",
   "type": "typo3-cms-extension",
   "keywords": [
@@ -16,7 +16,7 @@
   ],
   "autoload": {
     "psr-4": {
-      "LFM\\MaskAutoKesearch\\": "Classes/"
+      "LFM\\KeSearchAutomask\\": "Classes/"
     }
   },
   "require": {

@@ -4,5 +4,5 @@ services:
     autoconfigure: true
     public: false
 
-  LFM\MaskAutoKesearch\:
+  LFM\KeSearchAutomask\:
     resource: '../Classes/*'

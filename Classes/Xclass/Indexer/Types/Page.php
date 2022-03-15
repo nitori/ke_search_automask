@@ -1,6 +1,6 @@
 <?php
 
-namespace LFM\MaskAutoKesearch\Xclass\Indexer\Types;
+namespace LFM\KeSearchAutomask\Xclass\Indexer\Types;
 
 use MASK\Mask\Loader\LoaderRegistry;
 use Tpwd\KeSearch\Indexer\IndexerRunner;

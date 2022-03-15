@@ -1,8 +1,8 @@
 <?php
 
-namespace LFM\MaskAutoKesearch\Indexer;
+namespace LFM\KeSearchAutomask\Indexer;
 
-use LFM\MaskAutoKesearch\Xclass\Indexer\Types\Page;
+use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaFieldDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
@@ -23,7 +23,7 @@ class AdditionalContentFields
     public function __construct()
     {
         $this->extConf = GeneralUtility::makeInstance(ExtensionConfiguration::class)
-            ->get('mask_auto_kesearch');
+            ->get('ke_search_automask');
         $loaderRegistry = GeneralUtility::getContainer()->get(LoaderRegistry::class);
         $this->collection = $loaderRegistry->getActivateLoader()->load();
     }
