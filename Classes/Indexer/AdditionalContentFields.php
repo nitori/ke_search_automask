@@ -2,6 +2,7 @@
 
 namespace LFM\KeSearchAutomask\Indexer;
 
+use Doctrine\DBAL\FetchMode;
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaFieldDefinition;
@@ -115,7 +116,7 @@ class AdditionalContentFields
                 $queryBuilder->expr()->eq('parentid', $queryBuilder->createNamedParameter($parentid))
             )
             ->execute()
-            ->fetchAllAssociative();
+            ->fetchAll(FetchMode::ASSOCIATIVE);
     }
 
     /**
