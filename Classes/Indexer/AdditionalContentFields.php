@@ -92,6 +92,7 @@ class AdditionalContentFields
             $this->pageIndexer->addRowCount(count($rows));
 
             // @todo: Improve this, as it potentially causes A LOT of database queries.
+            // @todo: Maybe collect field and table names and do a single query.
             foreach ($nestedTca as $childField) {
                 foreach ($rows as $childRow) {
                     yield from $this->getContentRecursive($childField, $childTable, $childRow);
