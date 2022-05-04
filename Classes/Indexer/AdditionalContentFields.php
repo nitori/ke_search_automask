@@ -78,7 +78,11 @@ class AdditionalContentFields
         }
 
         if ($field->type->isParentField()) {
-            $childTable = $field->fullKey;
+            if ($field->type->isGroupingField()) {
+                $childTable = $tableName;
+            } else {
+                $childTable = $field->fullKey;
+            }
             $nestedTca = $this->collection->loadInlineFields($field->fullKey, $field->fullKey);
             if ((int)$this->extConf['cacheRecords']) {
                 $rows = $this->getTableDataFromCache($childTable, $tableName, $row['uid']);
