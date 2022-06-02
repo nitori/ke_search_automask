@@ -4,6 +4,7 @@ namespace LFM\KeSearchAutomask\Indexer;
 
 use Doctrine\DBAL\FetchMode;
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
+use LFM\Lfmcore\Utility\DebuggerUtility;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaFieldDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
@@ -33,7 +34,7 @@ class AdditionalContentFields
     {
         // add all tt_content non-core searchable fields
         foreach ($this->collection->getTable('tt_content')->tca ?? [] as $field) {
-            if (!$field->isCoreField && $field->type->isSearchable()) {
+            if (!$field->isCoreField && $field->getFieldType($field->fullKey)->isSearchable()) {
                 $fields .= "," . $field->fullKey;
             }
         }
@@ -73,12 +74,12 @@ class AdditionalContentFields
             return;
         }
 
-        if ($field->type->isSearchable()) {
+        if ($field->getFieldType($field->fullKey)->isSearchable()) {
             yield strip_tags($row[$field->fullKey] ?? '');
         }
 
-        if ($field->type->isParentField()) {
-            if ($field->type->isGroupingField()) {
+        if ($field->getFieldType($field->fullKey)->isParentField()) {
+            if ($field->getFieldType($field->fullKey)->isGroupingField()) {
                 $childTable = $tableName;
             } else {
                 $childTable = $field->fullKey;
