@@ -3,8 +3,6 @@
 namespace LFM\KeSearchAutomask\Indexer;
 
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
-use LFM\Lfmcore\Utility\DebuggerUtility;
-use LFM\Lfmcore\Utility\QueryUtility;
 use MASK\Mask\Definition\NestedTcaFieldDefinitions;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaDefinition;
