@@ -2,14 +2,14 @@
 
 namespace LFM\KeSearchAutomask\Indexer;
 
-use Doctrine\DBAL\FetchMode;
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
-use LFM\Lfmcore\Utility\DebuggerUtility;
+use MASK\Mask\Definition\NestedTcaFieldDefinitions;
 use MASK\Mask\Definition\TableDefinitionCollection;
-use MASK\Mask\Definition\TcaFieldDefinition;
+use MASK\Mask\Definition\TcaDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
 use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class AdditionalContentFields
@@ -18,9 +18,9 @@ class AdditionalContentFields
 
     protected ?Page $pageIndexer = null;
 
-    protected static array $tableCache = [];
-
     protected $extConf;
+
+    protected $aliasCounter = 1;
 
     public function __construct()
     {
@@ -60,101 +60,138 @@ class AdditionalContentFields
             return;
         }
 
-        foreach ($element->tcaDefinition as $field) {
-            $generator = $this->getContentRecursive($field, 'tt_content', $ttContentRow);
-            $content = iterator_to_array($generator, false);
-            $content = implode(' ', array_filter($content, 'trim'));
-            $bodytext .= empty($content) ? '' : (' ' . $content);
-        }
-    }
-
-    protected function getContentRecursive(TcaFieldDefinition $field, string $tableName, array $row)
-    {
-        if ($field->isCoreField) {
+        [$textFields, $hasNesting] = $this->getTextFieldsNested($element->tcaDefinition);
+        if (empty($textFields)) {
             return;
         }
 
-        if ($field->getFieldType($field->fullKey)->isSearchable()) {
-            yield strip_tags($row[$field->fullKey] ?? '');
+        foreach ($textFields as $textField) {
+            $fieldName = $textField['key'];
+            if (isset($ttContentRow[$fieldName]) && is_string($ttContentRow[$fieldName])) {
+                $bodytext .= ' ' . $ttContentRow[$fieldName];
+            }
         }
 
-        if ($field->getFieldType($field->fullKey)->isParentField()) {
-            if ($field->getFieldType($field->fullKey)->isGroupingField()) {
-                $childTable = $tableName;
-            } else {
-                $childTable = $field->fullKey;
-            }
-            $nestedTca = $this->collection->loadInlineFields($field->fullKey, $field->fullKey);
-            if ((int)$this->extConf['cacheRecords']) {
-                $rows = $this->getTableDataFromCache($childTable, $tableName, $row['uid']);
-            } else {
-                $rows = $this->getTableDataDirectly($childTable, $tableName, $row['uid']);
-            }
-            $this->pageIndexer->addRowCount(count($rows));
+        if (!$hasNesting) {
+            // simple form, no further querying required
+            return;
+        }
 
-            // @todo: Improve this, as it potentially causes A LOT of database queries.
-            // @todo: Maybe collect field and table names and do a single query.
-            foreach ($nestedTca as $childField) {
-                foreach ($rows as $childRow) {
-                    yield from $this->getContentRecursive($childField, $childTable, $childRow);
+        $queryBuilder = $this->getQueryBuilder('tt_content');
+        $queryBuilder->from('tt_content', 'c')
+            ->where($queryBuilder->expr()->eq('c.uid', (int)$ttContentRow['uid']));
+
+        $this->buildRecursiveJoinQueries($queryBuilder, 'c', 'tt_content', $textFields);
+
+        $columns = [];
+        $pageIndexer->addQueryCount(1);
+        foreach ($queryBuilder->execute() as $row) {
+            $pageIndexer->addRowCount(1);
+            foreach ($row as $columnName => $columnValue) {
+                $columns[$columnName] = $columns[$columnName] ?? [];
+                if ($columnValue) {
+                    $columns[$columnName][] = strip_tags((string)$columnValue);
                 }
             }
         }
+
+        $columns = array_map(function ($column) {
+            $column = array_unique($column);
+            return implode("\n", $column);
+        }, $columns);
+        $bodytext .= implode("\n", $columns);
+    }
+
+    protected function buildRecursiveJoinQueries(QueryBuilder $queryBuilder, $fromAlias, $fromTable, $textFields)
+    {
+        foreach ($textFields as $textField) {
+            if ($textField['type'] === 'inline') {
+                $nextAlias = $this->getUniqueAlias($textField['key']);
+                $condition = $queryBuilder->expr()->andX(
+                    $queryBuilder->expr()->eq($nextAlias . '.parentid', $fromAlias . '.uid'),
+                    $queryBuilder->expr()->eq($nextAlias . '.parenttable', $queryBuilder->createNamedParameter($fromTable))
+                );
+                $queryBuilder->leftJoin($fromAlias, $textField['key'], $nextAlias, $condition);
+                $this->buildRecursiveJoinQueries($queryBuilder, $nextAlias, $textField['key'], $textField['fields']);
+            }
+            if ($fromAlias === 'c') {
+                // fields in initial tt_content are already covered.
+                continue;
+            }
+            $queryBuilder->addSelect($fromAlias . '.' . $textField['key']);
+        }
+    }
+
+    protected function getUniqueAlias($tableName)
+    {
+        if (str_starts_with($tableName, 'tx_mask_')) {
+            $tableName = substr($tableName, 8);
+        }
+        $alias = substr($tableName, 0, 3) . $this->aliasCounter;
+        $this->aliasCounter++;
+        return $alias;
+    }
+
+    /**
+     * @param NestedTcaFieldDefinitions|TcaDefinition $tca
+     * @return array
+     */
+    protected function getTextFieldsNested(\IteratorAggregate $tca)
+    {
+        $textFields = [];
+        $hasNesting = false;
+        foreach ($tca as $field) {
+            if ($field->isCoreField) {
+                continue;
+            }
+            $type = $field->getFieldType($field->fullKey);
+            if ($type->isSearchable()) {
+                $textFields[] = [
+                    'key' => $field->fullKey,
+                    'type' => 'string',
+                ];
+            }
+
+            $isParent = $type->isParentField();
+            $isGrouping = $type->isGroupingField();
+            $isInline = $isParent && !$isGrouping;
+            $isPalette = $isParent && $isGrouping;
+
+            if ($isPalette) {
+                $nestedTca = $this->collection->loadInlineFields($field->fullKey, $field->fullKey);
+                [$nestedTextFields, $hasNestedNesting] = $this->getTextFieldsNested($nestedTca);
+                $hasNesting = $hasNesting || $hasNestedNesting;
+                foreach ($nestedTextFields as $nestedTextField) {
+                    $textFields[] = $nestedTextField;
+                }
+            }
+
+            if ($isInline) {
+                $nestedTca = $this->collection->loadInlineFields($field->fullKey, $field->fullKey);
+                [$nestedTextFields, $hasNestedNesting] = $this->getTextFieldsNested($nestedTca);
+                if (!empty($nestedTextFields)) {
+                    $hasNesting = true;
+                    $textFields[] = [
+                        'key' => $field->fullKey,
+                        'type' => 'inline',
+                        'nesting' => $hasNestedNesting,
+                        'fields' => $nestedTextFields,
+                    ];
+                }
+            }
+        }
+        return [$textFields, $hasNesting];
     }
 
     /**
      * Makes a query for each relationship
      *
-     * @param $tableName
-     * @param $parenttable
-     * @param $parentid
-     * @return array
+     * @param string $tableName
+     * @return QueryBuilder
      */
-    protected function getTableDataDirectly($tableName, $parenttable, $parentid): array
+    protected function getQueryBuilder($tableName): QueryBuilder
     {
-        $this->pageIndexer->addQueryCount(1);
-        $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
+        return GeneralUtility::makeInstance(ConnectionPool::class)
             ->getQueryBuilderForTable($tableName);
-        return $queryBuilder->select('*')
-            ->from($tableName)
-            ->where(
-                $queryBuilder->expr()->eq('parenttable', $queryBuilder->createNamedParameter($parenttable)),
-                $queryBuilder->expr()->eq('parentid', $queryBuilder->createNamedParameter($parentid))
-            )
-            ->execute()
-            ->fetchAll(FetchMode::ASSOCIATIVE);
-    }
-
-    /**
-     * Reduces the amount of queries, but requires more memory to cache all records.
-     *
-     * @param $tableName
-     * @param $parenttable
-     * @param $parentid
-     * @return array
-     */
-    protected function getTableDataFromCache($tableName, $parenttable, $parentid): array
-    {
-        $cacheKey = $parenttable . '-' . $parentid;
-        if (!isset(self::$tableCache[$tableName])) {
-            self::$tableCache[$tableName] = [];
-        }
-
-        if (!isset(self::$tableCache[$tableName][$cacheKey])) {
-            $this->pageIndexer->addQueryCount(1);
-            $queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)
-                ->getQueryBuilderForTable($tableName);
-            $result = $queryBuilder->select('*')
-                ->from($tableName)
-                ->execute();
-            foreach ($result as $row) {
-                $rowCacheKey = $row['parenttable'] . '-' . $row['parentid'];
-                if (!isset(self::$tableCache[$tableName][$rowCacheKey])) {
-                    self::$tableCache[$tableName][$rowCacheKey] = [];
-                }
-                self::$tableCache[$tableName][$rowCacheKey][] = $row;
-            }
-        }
-        return self::$tableCache[$tableName][$cacheKey] ?? [];
     }
 }
