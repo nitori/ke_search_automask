@@ -85,10 +85,11 @@ class AdditionalContentFields
 
         $this->buildRecursiveJoinQueries($queryBuilder, 'c', 'tt_content', $textFields);
 
+        $result = $queryBuilder->execute();
         $columns = [];
         $pageIndexer->addQueryCount(1);
-        foreach ($queryBuilder->execute() as $row) {
-            $pageIndexer->addRowCount(1);
+        $pageIndexer->addRowCount($result->rowCount());
+        foreach ($result as $row) {
             foreach ($row as $columnName => $columnValue) {
                 $columns[$columnName] = $columns[$columnName] ?? [];
                 if ($columnValue) {
@@ -99,9 +100,9 @@ class AdditionalContentFields
 
         $columns = array_map(function ($column) {
             $column = array_unique($column);
-            return implode("\n", $column);
+            return implode(" ", $column);
         }, $columns);
-        $bodytext .= implode("\n", $columns);
+        $bodytext .= implode(" ", $columns);
     }
 
     protected function buildRecursiveJoinQueries(QueryBuilder $queryBuilder, $fromAlias, $fromTable, $textFields)
