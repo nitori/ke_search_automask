@@ -7,7 +7,6 @@ use MASK\Mask\Definition\NestedTcaFieldDefinitions;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
-use TYPO3\CMS\Core\Configuration\ExtensionConfiguration;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -18,14 +17,10 @@ class AdditionalContentFields
 
     protected ?Page $pageIndexer = null;
 
-    protected $extConf;
-
     protected $aliasCounter = 1;
 
     public function __construct()
     {
-        $this->extConf = GeneralUtility::makeInstance(ExtensionConfiguration::class)
-            ->get('ke_search_automask');
         $loaderRegistry = GeneralUtility::getContainer()->get(LoaderRegistry::class);
         $this->collection = $loaderRegistry->getActivateLoader()->load();
     }
