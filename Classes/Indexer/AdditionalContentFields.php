@@ -3,6 +3,7 @@
 namespace LFM\KeSearchAutomask\Indexer;
 
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
+use LFM\Lfmcore\Utility\DebuggerUtility;
 use MASK\Mask\Definition\NestedTcaFieldDefinitions;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaDefinition;
@@ -65,6 +66,7 @@ class AdditionalContentFields
             return;
         }
 
+        // add fields directly on tt_content
         foreach ($textFields as $textField) {
             $fieldName = $textField['key'];
             if (isset($ttContentRow[$fieldName]) && is_string($ttContentRow[$fieldName])) {
