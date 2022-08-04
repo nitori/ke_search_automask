@@ -80,27 +80,51 @@ class AdditionalContentFields
         $this->buildRecursiveJoinQueries($queryBuilder, 'c', 'tt_content', $textFields);
 
         $result = $queryBuilder->execute();
-        $columns = [];
         $pageIndexer->addQueryCount(1);
         $pageIndexer->addRowCount($result->rowCount());
+
+        // collect rows into mappings of [$tableAlias => [$uid => $row]]
+        // main purpose is to avoid duplicate rows due to joins.
+        $collections = [];
         foreach ($result as $row) {
+            $uidMap = [];
             foreach ($row as $columnName => $columnValue) {
-                $columns[$columnName] = $columns[$columnName] ?? [];
-                if ($columnValue) {
-                    $columns[$columnName][] = strip_tags((string)$columnValue);
+                [$alias, $column] = explode('__', $columnName, 2);
+                if ($column === 'uid') {
+                    $uidMap[$alias] = $columnValue;
                 }
+            }
+
+            foreach ($row as $columnName => $columnValue) {
+                [$alias, $column] = explode('__', $columnName, 2);
+                if ($column === 'uid') {
+                    continue; // no need to add uid
+                }
+                $uid = $uidMap[$alias];
+                $collections[$alias] = $collections[$alias] ?? [];
+                $collections[$alias][$uid] = $collections[$alias][$uid] ?? [];
+                $collections[$alias][$uid][$column] = $columnValue;
             }
         }
 
-        $columns = array_map(function ($column) {
-            $column = array_unique($column);
-            return implode(" ", $column);
-        }, $columns);
-        $bodytext .= implode(" ", $columns);
+        $values = [];
+        foreach ($collections as $collection) {
+            foreach ($collection as $row) {
+                $value = implode("\n", array_filter($row, 'trim'));
+                $value = strip_tags($value);
+
+                $values[] = $value;
+            }
+        }
+
+        $bodytext .= implode(" ", $values);
     }
 
     protected function buildRecursiveJoinQueries(QueryBuilder $queryBuilder, $fromAlias, $fromTable, $textFields)
     {
+        if ($fromAlias !== 'c') {
+            $queryBuilder->addSelect($fromAlias . '.uid AS ' . $fromAlias . '__uid');
+        }
         foreach ($textFields as $textField) {
             if ($textField['type'] === 'inline') {
                 $nextAlias = $this->getUniqueAlias($textField['key']);
