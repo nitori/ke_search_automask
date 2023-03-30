@@ -3,16 +3,13 @@
 namespace LFM\KeSearchAutomask\Indexer;
 
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
-use LFM\Lfmcore\Utility\QueryUtility;
 use MASK\Mask\Definition\NestedTcaFieldDefinitions;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
-use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
 
 class AdditionalContentFields
 {
@@ -22,10 +19,19 @@ class AdditionalContentFields
 
     protected $aliasCounter = 1;
 
+    protected array $potentialParentFields = [];
+
     public function __construct()
     {
         $loaderRegistry = GeneralUtility::getContainer()->get(LoaderRegistry::class);
         $this->collection = $loaderRegistry->getActivateLoader()->load();
+
+        $columns = $this->getQueryBuilder('tt_content')
+            ->getConnection()->getSchemaManager()->listTableColumns('tt_content');
+        $this->potentialParentFields = array_filter(
+            array_keys($columns),
+            fn ($field) => str_starts_with($field, 'tx_mask_') && str_ends_with($field, '_parent')
+        );
     }
 
     public function modifyPageContentFields(&$fields, $pageIndexer)
@@ -36,7 +42,11 @@ class AdditionalContentFields
                 $fields .= "," . $field->fullKey;
             }
         }
-        $fields .= ',colPos,tx_mask_content_parent';
+        $fields .= ',colPos';
+
+        if (count($this->potentialParentFields) > 0) {
+            $fields .= ',' . implode(',', $this->potentialParentFields);
+        }
     }
 
     /**
