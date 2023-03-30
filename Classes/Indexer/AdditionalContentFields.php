@@ -3,13 +3,16 @@
 namespace LFM\KeSearchAutomask\Indexer;
 
 use LFM\KeSearchAutomask\Xclass\Indexer\Types\Page;
+use LFM\Lfmcore\Utility\QueryUtility;
 use MASK\Mask\Definition\NestedTcaFieldDefinitions;
 use MASK\Mask\Definition\TableDefinitionCollection;
 use MASK\Mask\Definition\TcaDefinition;
 use MASK\Mask\Loader\LoaderRegistry;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
+use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
 
 class AdditionalContentFields
 {
@@ -33,6 +36,7 @@ class AdditionalContentFields
                 $fields .= "," . $field->fullKey;
             }
         }
+        $fields .= ',colPos,tx_mask_content_parent';
     }
 
     /**
@@ -43,6 +47,12 @@ class AdditionalContentFields
      */
     public function modifyContentFromContentElement(string &$bodytext, array $ttContentRow, $pageIndexer)
     {
+        if (((int)$ttContentRow['colPos']) === 999) {
+            if ($this->checkIfAnyParentIsDisabled('tt_content', $ttContentRow)) {
+                $bodytext = '';
+            }
+        }
+
         $this->pageIndexer = $pageIndexer;
         $ctype = $ttContentRow['CType'];
         if (!str_starts_with($ctype, 'mask_')) {
@@ -204,6 +214,57 @@ class AdditionalContentFields
             }
         }
         return [$textFields, $hasNesting];
+    }
+
+    protected function checkIfAnyParentIsDisabled($table, $row, $root = null): bool
+    {
+        if ($table === 'tt_content' && $row['colPos'] !== 999) {
+            return false;
+        }
+
+        if ($table === 'tt_content') {
+            $parentId = 0;
+            $parentTable = '';
+            foreach ($row as $field => $value) {
+                if (str_starts_with($field, 'tx_mask_') && str_ends_with($field, '_parent') && $value > 0) {
+                    $relField = substr($field, 0, -7);
+                    $parentId = $value;
+                    $parentTable = $this->collection->getTableByField($relField);
+                    break;
+                }
+            }
+        } else {
+            $parentId = $row['parentid'] ?? 0;
+            $parentTable = $row['parenttable'] ?? '';
+        }
+
+        if ($root === null) {
+            $root = [];
+        }
+        $root[] = (int)$row['uid'];
+
+        if ($parentId === 0 || $parentTable === '') {
+            // @todo: check
+            return true;
+        }
+
+        $queryBuilder = $this->getQueryBuilder($parentTable);
+        $queryBuilder->from($parentTable)->where(
+            $queryBuilder->expr()->eq('uid', $parentId)
+        );
+
+        if (str_starts_with($parentTable, 'tx_mask_')) {
+            $queryBuilder->select('uid', 'parentid', 'parenttable');
+        } else {
+            $queryBuilder->select('*');
+        }
+
+        $result = $queryBuilder->execute()->fetchAssociative();
+
+        if ($result === false) {
+            return true;
+        }
+        return $this->checkIfAnyParentIsDisabled($parentTable, $result, $root);
     }
 
     /**
